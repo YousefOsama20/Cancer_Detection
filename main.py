@@ -14,6 +14,7 @@ Author: Cancer Detection Project
 # ---------------------------------------------------------------------------
 import sys
 import os
+import tempfile
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # Hide TF C++ warnings
 
@@ -29,7 +30,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QLabel, QPushButton, QFileDialog, QProgressBar,
     QFrame, QSizePolicy, QGraphicsDropShadowEffect, QMessageBox,
-    QSpacerItem, QGroupBox, QGridLayout
+    QSpacerItem, QGroupBox, QGridLayout, QShortcut, QStackedWidget
 )
 from PyQt5.QtGui import (
     QPixmap, QFont, QColor, QPalette, QIcon, QPainter,
@@ -37,8 +38,9 @@ from PyQt5.QtGui import (
 )
 from PyQt5.QtCore import (
     Qt, QThread, pyqtSignal, QSize, QTimer, QPropertyAnimation,
-    QEasingCurve, pyqtProperty, QRect
+    QEasingCurve, pyqtProperty, QRect, QMimeData
 )
+from PyQt5.QtGui import QKeySequence
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -414,6 +416,7 @@ class CancerTab(QWidget):
         self.classes = classes
         self.color = color
         self.image_path = None
+        self._temp_paste_path = None  # Track temp files from clipboard paste
         self.worker = None
 
         layout = QVBoxLayout(self)
@@ -489,7 +492,7 @@ class CancerTab(QWidget):
         img_layout.setAlignment(Qt.AlignCenter)
 
         self.image_label = QLabel()
-        self.image_label.setFixedSize(320, 320)
+        self.image_label.setFixedSize(360, 360)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setStyleSheet(f"""
             background-color: {COLOR_BG_CARD};
@@ -498,13 +501,67 @@ class CancerTab(QWidget):
             color: {COLOR_TEXT_SECONDARY};
             font-size: 13px;
         """)
-        self.image_label.setText("📁\nDrag & drop or click\n\"Upload Image\" below")
+        self.image_label.setText("📁\nUpload or paste (Ctrl+V)\nan image to begin")
         img_layout.addWidget(self.image_label, alignment=Qt.AlignCenter)
 
-        # Buttons row
-        btn_row = QWidget()
-        btn_layout = QHBoxLayout(btn_row)
-        btn_layout.setContentsMargins(0, 8, 0, 0)
+        # --- Segmented input mode selector ---
+        mode_row = QWidget()
+        mode_layout = QHBoxLayout(mode_row)
+        mode_layout.setContentsMargins(0, 8, 0, 0)
+        mode_layout.setSpacing(0)
+
+        # Shared style for segmented buttons
+        seg_base = f"""
+            QPushButton {{
+                background-color: {COLOR_BG_CARD};
+                color: {COLOR_TEXT_SECONDARY};
+                border: 1px solid {COLOR_BORDER};
+                font-size: 12px;
+                font-weight: bold;
+                padding: 8px 18px;
+            }}
+            QPushButton:hover {{
+                background-color: {COLOR_BG_HOVER};
+                color: {COLOR_TEXT_PRIMARY};
+            }}
+        """
+        seg_active = f"""
+            QPushButton {{
+                background-color: {color};
+                color: white;
+                border: 1px solid {color};
+                font-size: 12px;
+                font-weight: bold;
+                padding: 8px 18px;
+            }}
+        """
+
+        self._seg_base_style = seg_base
+        self._seg_active_style = seg_active
+
+        self.seg_upload_btn = QPushButton("📂  Upload")
+        self.seg_upload_btn.setMinimumHeight(36)
+        self.seg_upload_btn.setStyleSheet(seg_active + "QPushButton { border-top-left-radius: 8px; border-bottom-left-radius: 8px; border-top-right-radius: 0; border-bottom-right-radius: 0; }")
+        self.seg_upload_btn.clicked.connect(lambda: self._switch_input_mode("upload"))
+        mode_layout.addWidget(self.seg_upload_btn)
+
+        self.seg_paste_btn = QPushButton("📋  Paste")
+        self.seg_paste_btn.setMinimumHeight(36)
+        self.seg_paste_btn.setStyleSheet(seg_base + "QPushButton { border-top-right-radius: 8px; border-bottom-right-radius: 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }")
+        self.seg_paste_btn.clicked.connect(lambda: self._switch_input_mode("paste"))
+        mode_layout.addWidget(self.seg_paste_btn)
+
+        mode_layout.addStretch()
+        img_layout.addWidget(mode_row)
+
+        # --- Stacked action area for Upload / Paste ---
+        self.input_stack = QStackedWidget()
+
+        # Page 0: Upload action
+        upload_page = QWidget()
+        upload_page_layout = QHBoxLayout(upload_page)
+        upload_page_layout.setContentsMargins(0, 0, 0, 0)
+        upload_page_layout.setSpacing(8)
 
         self.upload_btn = QPushButton("📂  Upload Image")
         self.upload_btn.setMinimumHeight(42)
@@ -522,15 +579,59 @@ class CancerTab(QWidget):
             QPushButton:pressed {{ background-color: {color}99; }}
         """)
         self.upload_btn.clicked.connect(self.upload_image)
-        btn_layout.addWidget(self.upload_btn)
+        upload_page_layout.addWidget(self.upload_btn)
+        self.input_stack.addWidget(upload_page)
+
+        # Page 1: Paste action
+        paste_page = QWidget()
+        paste_page_layout = QVBoxLayout(paste_page)
+        paste_page_layout.setContentsMargins(0, 0, 0, 0)
+        paste_page_layout.setSpacing(6)
+
+        paste_hint = QLabel("Press  Ctrl+V  or click the button below to paste from clipboard")
+        paste_hint.setFont(QFont("Segoe UI", 10))
+        paste_hint.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY}; font-style: italic;")
+        paste_hint.setAlignment(Qt.AlignCenter)
+        paste_page_layout.addWidget(paste_hint)
+
+        self.paste_btn = QPushButton("📋  Paste from Clipboard")
+        self.paste_btn.setMinimumHeight(42)
+        self.paste_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLOR_ACCENT_PURPLE};
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 10px 20px;
+            }}
+            QPushButton:hover {{ background-color: {COLOR_ACCENT_PURPLE}cc; }}
+            QPushButton:pressed {{ background-color: {COLOR_ACCENT_PURPLE}99; }}
+        """)
+        self.paste_btn.clicked.connect(self.paste_image)
+        paste_page_layout.addWidget(self.paste_btn)
+        self.input_stack.addWidget(paste_page)
+
+        self.input_stack.setCurrentIndex(0)  # Default to Upload
+        img_layout.addWidget(self.input_stack)
+
+        # Buttons row (Clear — always visible)
+        btn_row = QWidget()
+        btn_layout = QHBoxLayout(btn_row)
+        btn_layout.setContentsMargins(0, 4, 0, 0)
 
         self.clear_btn = QPushButton("🔄  Clear")
         self.clear_btn.setMinimumHeight(42)
         self.clear_btn.clicked.connect(self.clear_all)
         btn_layout.addWidget(self.clear_btn)
 
+        # Keyboard shortcut: Ctrl+V to paste
+        self._paste_shortcut = QShortcut(QKeySequence("Ctrl+V"), self)
+        self._paste_shortcut.activated.connect(self.paste_image)
+
         img_layout.addWidget(btn_row)
-        body_layout.addWidget(img_group)
+        body_layout.addWidget(img_group, 1)  # stretch factor = 1 (equal 5:5 ratio)
 
         # Right: results area
         results_group = QGroupBox("  Prediction Results  ")
@@ -581,7 +682,7 @@ class CancerTab(QWidget):
 
         # Segmentation mask output (for Breast Cancer)
         self.mask_label = QLabel()
-        self.mask_label.setFixedSize(280, 280)
+        self.mask_label.setFixedSize(320, 320)
         self.mask_label.setAlignment(Qt.AlignCenter)
         self.mask_label.setStyleSheet(f"""
             background-color: {COLOR_BG_CARD};
@@ -625,7 +726,7 @@ class CancerTab(QWidget):
         results_layout.addWidget(self.predict_btn)
 
         results_layout.addStretch()
-        body_layout.addWidget(results_group)
+        body_layout.addWidget(results_group, 1)  # stretch factor = 1 (equal 5:5 ratio)
 
         layout.addWidget(body)
 
@@ -642,6 +743,80 @@ class CancerTab(QWidget):
             self.status_label.setText("Image loaded. Press Predict to analyze.")
             self.status_label.setStyleSheet(f"color: {COLOR_ACCENT_GREEN};")
             self._clear_results()
+
+    def _switch_input_mode(self, mode):
+        """Switch between Upload and Paste input modes."""
+        if mode == "upload":
+            self.input_stack.setCurrentIndex(0)
+            self.seg_upload_btn.setStyleSheet(
+                self._seg_active_style + "QPushButton { border-top-left-radius: 8px; border-bottom-left-radius: 8px; border-top-right-radius: 0; border-bottom-right-radius: 0; }"
+            )
+            self.seg_paste_btn.setStyleSheet(
+                self._seg_base_style + "QPushButton { border-top-right-radius: 8px; border-bottom-right-radius: 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; }"
+            )
+        else:
+            self.input_stack.setCurrentIndex(1)
+            self.seg_paste_btn.setStyleSheet(
+                self._seg_active_style + "QPushButton { border-top-right-radius: 8px; border-bottom-right-radius: 8px; border-top-left-radius: 0; border-bottom-left-radius: 0; }"
+            )
+            self.seg_upload_btn.setStyleSheet(
+                self._seg_base_style + "QPushButton { border-top-left-radius: 8px; border-bottom-left-radius: 8px; border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: none; }"
+            )
+
+    def paste_image(self):
+        """Paste an image from the system clipboard."""
+        clipboard = QApplication.clipboard()
+        mime = clipboard.mimeData()
+
+        pixmap = None
+        if mime.hasImage():
+            qimage = clipboard.image()
+            if not qimage.isNull():
+                pixmap = QPixmap.fromImage(qimage)
+        elif mime.hasUrls():
+            # Some apps put file URLs on clipboard
+            for url in mime.urls():
+                if url.isLocalFile():
+                    path = url.toLocalFile()
+                    if os.path.isfile(path):
+                        pixmap = QPixmap(path)
+                        if not pixmap.isNull():
+                            # Use the file directly instead of saving a temp copy
+                            self.image_path = path
+                            self._display_image(path)
+                            self.predict_btn.setEnabled(True)
+                            self.status_label.setText("Image pasted from clipboard. Press Predict to analyze.")
+                            self.status_label.setStyleSheet(f"color: {COLOR_ACCENT_GREEN};")
+                            self._clear_results()
+                            return
+
+        if pixmap is None or pixmap.isNull():
+            self.status_label.setText("⚠ No image found in clipboard. Copy an image first.")
+            self.status_label.setStyleSheet(f"color: {COLOR_ACCENT_ORANGE};")
+            return
+
+        # Save the clipboard image to a temp file so the prediction pipeline can use it
+        self._cleanup_temp_paste()
+        temp_fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="medvision_paste_")
+        os.close(temp_fd)
+        pixmap.save(temp_path, "PNG")
+
+        self._temp_paste_path = temp_path
+        self.image_path = temp_path
+        self._display_image(temp_path)
+        self.predict_btn.setEnabled(True)
+        self.status_label.setText("Image pasted from clipboard. Press Predict to analyze.")
+        self.status_label.setStyleSheet(f"color: {COLOR_ACCENT_GREEN};")
+        self._clear_results()
+
+    def _cleanup_temp_paste(self):
+        """Remove any previously saved temp paste file."""
+        if self._temp_paste_path and os.path.isfile(self._temp_paste_path):
+            try:
+                os.remove(self._temp_paste_path)
+            except OSError:
+                pass
+            self._temp_paste_path = None
 
     def _display_image(self, path):
         pixmap = QPixmap(path)
@@ -692,6 +867,7 @@ class CancerTab(QWidget):
 
         self.predict_btn.setEnabled(False)
         self.upload_btn.setEnabled(False)
+        self.paste_btn.setEnabled(False)
         self.clear_btn.setEnabled(False)
         self._clear_results()
         self.spinner.start()
@@ -737,7 +913,7 @@ class CancerTab(QWidget):
                 # Ensure the data doesn't get garbage collected until QImage makes a deep copy
                 qimg = qimg.copy() 
                 pixmap = QPixmap.fromImage(qimg).scaled(
-                    280, 280, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    320, 320, Qt.KeepAspectRatio, Qt.SmoothTransformation
                 )
                 self.mask_label.setPixmap(pixmap)
                 self.mask_label.show()
@@ -770,6 +946,7 @@ class CancerTab(QWidget):
     def _on_finished(self):
         self.predict_btn.setEnabled(True)
         self.upload_btn.setEnabled(True)
+        self.paste_btn.setEnabled(True)
         self.clear_btn.setEnabled(True)
 
     def _clear_results(self):
@@ -785,9 +962,10 @@ class CancerTab(QWidget):
                 child.widget().deleteLater()
 
     def clear_all(self):
+        self._cleanup_temp_paste()
         self.image_path = None
         self.image_label.clear()
-        self.image_label.setText("📁\nDrag & drop or click\n\"Upload Image\" below")
+        self.image_label.setText("📁\nUpload or paste (Ctrl+V)\nan image to begin")
         self.image_label.setStyleSheet(f"""
             background-color: {COLOR_BG_CARD};
             border: 2px dashed {COLOR_BORDER};
@@ -796,7 +974,7 @@ class CancerTab(QWidget):
             font-size: 13px;
         """)
         self.predict_btn.setEnabled(False)
-        self.status_label.setText("Upload an image to begin.")
+        self.status_label.setText("Upload or paste an image to begin.")
         self.status_label.setStyleSheet(f"color: {COLOR_TEXT_SECONDARY};")
         self._clear_results()
 
