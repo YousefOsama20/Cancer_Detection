@@ -88,6 +88,10 @@ images/
 *.jpg
 *.png
 
+# Allow screenshots for README
+!screenshots/
+!screenshots/*.png
+
 # ===============================
 
 # Temporary files
