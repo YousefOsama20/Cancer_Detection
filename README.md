@@ -23,9 +23,19 @@
     <td align="center"><strong>🔬 Skin Cancer Classification</strong></td>
   </tr>
   <tr>
-    <td><img src="screenshots/brain_tumor_tab.png" width="340" alt="Brain Tumor Tab"></td>
-    <td><img src="screenshots/breast_cancer_tab.png" width="340" alt="Breast Cancer Tab"></td>
-    <td><img src="screenshots/skin_cancer_tab.png" width="340" alt="Skin Cancer Tab"></td>
+    <td><img src="screenshots/brain_tumor_prediction_1.png" width="340" alt="Brain Tumor Tab"></td>
+    <td><img src="screenshots/breast_cancer_prediction_1.png" width="340" alt="Breast Cancer Tab"></td>
+    <td><img src="screenshots/skin_cancer_prediction_1.png" width="340" alt="Skin Cancer Tab"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>🧠 Brain Tumor Prediction</strong></td>
+    <td align="center"><strong>🎗️ Breast Cancer Prediction</strong></td>
+    <td align="center"><strong>🔬 Skin Cancer Prediction</strong></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/brain_tumor_prediction_2.png" width="340" alt="Brain Tumor Prediction"></td>
+    <td><img src="screenshots/breast_cancer_prediction_2.png" width="340" alt="Breast Cancer Prediction"></td>
+    <td><img src="screenshots/skin_cancer_prediction_2.png" width="340" alt="Skin Cancer Prediction"></td>
   </tr>
 </table>
 
@@ -131,9 +141,12 @@ Cancer_Detection/
 │   └── skin_isic_no_ak_sk_yolo_cls_notebook_(5).ipynb
 │
 └── screenshots/                     # Application screenshots
-    ├── brain_tumor_tab.png
-    ├── breast_cancer_tab.png
-    └── skin_cancer_tab.png
+    ├── brain_tumor_prediction_1.png
+    ├── brain_tumor_prediction_2.png
+    ├── breast_cancer_prediction_1.png
+    ├── breast_cancer_prediction_2.png
+    ├── skin_cancer_prediction_1.png
+    └── skin_cancer_prediction_2.png
 ```
 
 ---
