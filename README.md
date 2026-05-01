@@ -18,14 +18,14 @@
 
 <table>
   <tr>
-    <td align="center"><strong>🧠 Brain Tumor Detection</strong></td>
-    <td align="center"><strong>🎗️ Breast Cancer Segmentation</strong></td>
-    <td align="center"><strong>🔬 Skin Cancer Classification</strong></td>
+    <td align="center"><strong>🧠 Brain Tumor Prediction</strong></td>
+    <td align="center"><strong>🎗️ Breast Cancer Prediction</strong></td>
+    <td align="center"><strong>🔬 Skin Cancer Prediction</strong></td>
   </tr>
   <tr>
-    <td><img src="screenshots/brain_tumor_prediction_1.png" width="340" alt="Brain Tumor Tab"></td>
-    <td><img src="screenshots/breast_cancer_prediction_1.png" width="340" alt="Breast Cancer Tab"></td>
-    <td><img src="screenshots/skin_cancer_prediction_1.png" width="340" alt="Skin Cancer Tab"></td>
+    <td><img src="screenshots/brain_tumor_prediction_1.png" width="340" alt="Brain Tumor Prediction"></td>
+    <td><img src="screenshots/breast_cancer_prediction_1.png" width="340" alt="Breast Cancer Prediction"></td>
+    <td><img src="screenshots/skin_cancer_prediction_1.png" width="340" alt="Skin Cancer Prediction"></td>
   </tr>
   <tr>
     <td align="center"><strong>🧠 Brain Tumor Prediction</strong></td>
